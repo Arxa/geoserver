@@ -18,10 +18,13 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import javax.swing.text.NumberFormatter;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.xsd.XSDElementDeclaration;
@@ -40,6 +43,7 @@ import org.geotools.api.feature.simple.SimpleFeature;
 import org.geotools.api.feature.simple.SimpleFeatureType;
 import org.geotools.api.feature.type.AttributeDescriptor;
 import org.geotools.api.feature.type.FeatureType;
+import org.geotools.api.feature.type.Name;
 import org.geotools.api.feature.type.PropertyDescriptor;
 import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.feature.FeatureCollection;
@@ -156,7 +160,7 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
         coordFormatter.setGroupingUsed(false);
 
         // prepare the list of formatters
-        AttrFormatter[] formatters = getFormatters(fc.getSchema());
+        Map<Name, AttrFormatter> formattersMap = getFormatters(fc.getSchema());
 
         // write out the features
         try (FeatureIterator<?> i = fc.features()) {
@@ -167,13 +171,14 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
                 w.write(csvSeparator);
                 if (f instanceof SimpleFeature) {
                     // dump attributes
-                    for (int j = 0; j < ((SimpleFeature) f).getAttributeCount(); j++) {
-                        Object att = ((SimpleFeature) f).getAttribute(j);
+                    int j = 0;
+                    for (Map.Entry<Name, AttrFormatter> entry : formattersMap.entrySet()) {
+                        Object att = ((SimpleFeature) f).getAttribute(entry.getKey());
                         if (att != null) {
-                            String value = formatters[j].format(att);
+                            String value = entry.getValue().format(att);
                             w.write(value);
                         }
-                        if (j < ((SimpleFeature) f).getAttributeCount() - 1) {
+                        if (j++ < ((SimpleFeature) f).getAttributeCount() - 1) {
                             w.write(csvSeparator);
                         }
                     }
@@ -252,7 +257,7 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
         return separator;
     }
 
-    private AttrFormatter[] getFormatters(FeatureType schema) {
+    private LinkedHashMap<Name, AttrFormatter> getFormatters(FeatureType schema) {
         if (schema instanceof SimpleFeatureType) {
             // prepare the formatter for numbers
             NumberFormat coordFormatter = NumberFormat.getInstance(Locale.US);
@@ -261,28 +266,31 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
             coordFormatter.setGroupingUsed(false);
 
             SimpleFeatureType sft = (SimpleFeatureType) schema;
-            AttrFormatter[] formatters = new AttrFormatter[sft.getAttributeCount()];
+            LinkedHashMap<Name, AttrFormatter> map = new LinkedHashMap<>();
+            // AttrFormatter[] formatters = new AttrFormatter[sft.getAttributeCount()];
             int i = 0;
             for (AttributeDescriptor attributeDescriptor : sft.getAttributeDescriptors()) {
                 Class<?> binding = attributeDescriptor.getType().getBinding();
+                AttrFormatter attrFormatter;
                 if (Number.class.isAssignableFrom(binding)) {
-                    formatters[i] = new NumberFormatter(coordFormatter);
+                    attrFormatter = new NumberFormatter(coordFormatter);
                 } else if (java.sql.Date.class.isAssignableFrom(binding)) {
-                    formatters[i] = sqlDateFormatter;
+                    attrFormatter = sqlDateFormatter;
                 } else if (java.sql.Time.class.isAssignableFrom(binding)) {
-                    formatters[i] = sqlTimeFormatter;
+                    attrFormatter = sqlTimeFormatter;
                 } else if (java.util.Date.class.isAssignableFrom(binding)) {
-                    formatters[i] =
+                    attrFormatter =
                             Optional.ofNullable(gs.getService(WFSInfo.class))
                                     .map(service -> service.getCsvDateFormat())
                                     .map(format -> (AttrFormatter) new CustomDateFormatter(format))
                                     .orElse(juDateFormatter);
                 } else {
-                    formatters[i] = defaultFormatter;
+                    attrFormatter = defaultFormatter;
                 }
+                map.put(attributeDescriptor.getName(), attrFormatter);
                 i++;
             }
-            return formatters;
+            return map;
         } else {
             return null;
         }
