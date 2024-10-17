@@ -42,9 +42,22 @@ import org.jsoup.nodes.Document;
 import org.junit.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import javax.xml.namespace.QName;
+
 public class FeatureTest extends FeaturesTestSupport {
 
     private static final String WEB_MERCATOR_URI = "http://www.opengis.net/def/crs/EPSG/0/3857";
+
+    @Test
+    public void testNiki() throws Exception {
+        //String roadSegments = ResponseUtils.urlEncode(getLayerId(MockData.ROAD_SEGMENTS));
+       // String countries = ResponseUtils.urlEncode(getLayerId(QName.valueOf("ne:countries")));
+        MockHttpServletResponse response =
+                getAsServletResponse("ows?service=WFS&version=1.0.0&request=GetFeature&typeName=cdf:Fifteen&maxFeatures=50&outputFormat=text%2Fcsv&propertyname=pointProperty");
+        assertEquals(200, response.getStatus());
+        assertEquals(
+                "inline; filename=RoadSegments.json", response.getHeader("Content-Disposition"));
+    }
 
     @Test
     public void testContentDisposition() throws Exception {
